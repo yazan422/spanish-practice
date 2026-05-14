@@ -1,4 +1,4 @@
-const CACHE = 'spanish-v1';
+const CACHE = 'spanish-v2';
 const ASSETS = ['/', '/index.html', '/manifest.json', '/icon.svg'];
 
 self.addEventListener('install', e => {
