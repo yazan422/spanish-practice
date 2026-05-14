@@ -608,7 +608,7 @@ body {
   </div>
   <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
 
-  <div class="card" id="practiceCard">
+  <div class="card" id="practiceCard" onclick="handleCardTap(event)">
     <div class="swipe-label swipe-label-again">AGAIN</div>
     <div class="swipe-label swipe-label-easy">EASY</div>
     <div class="card-badge" id="cardBadge"></div>
@@ -953,7 +953,7 @@ function renderAudioFirst(card) {
     <p class="listening-hint">Listen — try to recall the meaning</p>`;
   document.getElementById('actionArea').innerHTML = `
     <button class="reveal-btn" onclick="advanceAudioFirst()">Reveal Spanish word</button>
-    <p class="reveal-hint">or press <strong>Space</strong></p>`;
+    <p class="reveal-hint">or tap the card</p>`;
   playCardAudio(card);
 }
 
@@ -969,7 +969,7 @@ function advanceAudioFirst() {
       <button class="play-again-btn" onclick="replayAudio()">▶ Play again</button>`;
     document.getElementById('actionArea').innerHTML = `
       <button class="reveal-btn" onclick="advanceAudioFirst()">Reveal translation</button>
-      <p class="reveal-hint">or press <strong>Space</strong></p>`;
+      <p class="reveal-hint">or tap the card</p>`;
   } else if (cardPhase === 1) {
     cardPhase = 2;
     document.getElementById('cardContent').innerHTML = `
@@ -992,7 +992,7 @@ function renderFlashcard(card) {
     <button class="play-again-btn" onclick="replayAudio()">▶ Play audio</button>`;
   document.getElementById('actionArea').innerHTML = `
     <button class="reveal-btn" onclick="revealFlashcard()">Reveal translation</button>
-    <p class="reveal-hint">or press <strong>Space</strong></p>`;
+    <p class="reveal-hint">or tap the card</p>`;
   playCardAudio(card);
 }
 
@@ -1100,6 +1100,12 @@ function selectChoice(btn, correctIdx) {
   card.addEventListener('touchcancel', resetCard);
 })();
 
+function handleCardTap(e) {
+  if (e.target.closest('button') || e.target.closest('input')) return;
+  if (currentMode === 'audio-first') advanceAudioFirst();
+  else if (currentMode === 'flashcard') revealFlashcard();
+}
+
 document.addEventListener('keydown', e => {
   if (document.getElementById('practiceScreen').classList.contains('hidden')) return;
   if (e.code === 'Space') {
@@ -1180,12 +1186,21 @@ function playCardAudio(card) {
   }
 }
 
-function googleTTS(text) {
-  const url = '/.netlify/functions/tts?text=' + encodeURIComponent(text) + '&lang=' + ttsAccent;
-  currentAudio = new Audio(url);
-  currentAudio.onended = markIdle;
-  currentAudio.onerror = () => { markIdle(); browserTTS(text); };
-  currentAudio.play().catch(() => browserTTS(text));
+async function googleTTS(text) {
+  try {
+    const url = '/.netlify/functions/tts?text=' + encodeURIComponent(text) + '&lang=' + ttsAccent;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error('tts error');
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    currentAudio = new Audio(blobUrl);
+    currentAudio.onended = () => { markIdle(); URL.revokeObjectURL(blobUrl); };
+    currentAudio.onerror = () => { markIdle(); URL.revokeObjectURL(blobUrl); browserTTS(text); };
+    await currentAudio.play();
+  } catch {
+    markIdle();
+    browserTTS(text);
+  }
 }
 
 function browserTTS(text) {
