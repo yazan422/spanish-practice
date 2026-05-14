@@ -1088,15 +1088,9 @@ function markIdle() {
   if (b) b.classList.add('idle');
 }
 
-function playCardAudio(card, fromUserGesture = false) {
+function playCardAudio(card) {
   stopAudio();
   if (!audioEnabled) return;
-  // On mobile, only play when the user explicitly taps — never auto-play
-  if (isMobile() && !fromUserGesture) {
-    const btn = document.getElementById('audioBtn');
-    if (btn) { btn.classList.remove('idle'); btn.title = 'Tap to hear'; }
-    return;
-  }
   if (card.audioFilename && mediaFiles.has(card.audioFilename)) {
     currentAudio = new Audio(mediaFiles.get(card.audioFilename));
     currentAudio.onended = markIdle;
@@ -1107,14 +1101,8 @@ function playCardAudio(card, fromUserGesture = false) {
   }
 }
 
-function isMobile() {
-  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
-    window.matchMedia('(pointer: coarse)').matches;
-}
-
 function googleTTS(text) {
-  const url = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&ttsspeed=0.85&tl='
-    + ttsAccent + '&q=' + encodeURIComponent(text);
+  const url = '/.netlify/functions/tts?text=' + encodeURIComponent(text) + '&lang=' + ttsAccent;
   currentAudio = new Audio(url);
   currentAudio.onended = markIdle;
   currentAudio.onerror = () => { markIdle(); browserTTS(text); };
