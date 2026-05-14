@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="112" fill="#0f0f13"/>
+  <rect width="512" height="512" rx="112" fill="#7c6af7" opacity="0.15"/>
+  <text x="256" y="300" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="220" font-weight="800" text-anchor="middle" fill="#7c6af7">ES</text>
+  <text x="256" y="390" font-family="-apple-system, BlinkMacSystemFont, sans-serif" font-size="72" font-weight="600" text-anchor="middle" fill="#888899">español</text>
+</svg>
