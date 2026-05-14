@@ -727,7 +727,17 @@ function buildQueue() {
   return { due, newCards: fresh };
 }
 
+// Unlock audio on first user gesture (required by mobile browsers)
+let audioUnlocked = false;
+function unlockAudio() {
+  if (audioUnlocked) return;
+  const s = new Audio('data:audio/wav;base64,UklGRigAAABXQVZFZm10IBAAAA' +
+    'EAAQARDwAAESsAAAIAAABkYXRhAgAAAAEA');
+  s.play().then(() => { audioUnlocked = true; }).catch(() => { audioUnlocked = true; });
+}
+
 function startSession() {
+  unlockAudio();
   const { due, newCards } = buildQueue();
   const queue = [...due, ...newCards];
   if (!queue.length) return;
