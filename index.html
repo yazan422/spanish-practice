@@ -1330,16 +1330,71 @@ function scheduleReminder() {
   }, target - now);
 }
 
+const REMINDER_QUOTES = [
+  "A language is a road map of a culture. Take one more step today.",
+  "Every expert was once a beginner. Your future fluent self is built right now.",
+  "One session a day keeps the forgetting curve away.",
+  "You don't have to be great to start, but you have to start to be great.",
+  "The best time to practice was yesterday. The second best time is now.",
+  "Small daily actions beat occasional heroic efforts every time.",
+  "Your brain is rewiring itself every time you study. That's real.",
+  "Consistency is the superpower nobody talks about.",
+  "Miss one day — no big deal. Miss the habit of not missing — huge deal.",
+  "Every word you learn today is one less you'll struggle with tomorrow.",
+  "The discomfort you feel right now is called growth.",
+  "Fluency isn't a destination. It's a direction. Keep pointing that way.",
+  "Think about the conversation you'll have that you couldn't have today.",
+  "You've come too far to only come this far.",
+  "Languages open doors that no key can unlock.",
+  "Your future self is watching you right now. Make them proud.",
+  "Even five minutes of practice moves the needle forward.",
+  "Discipline is just doing it when you don't feel like it.",
+  "The only bad session is the one you didn't show up for.",
+  "Momentum is fragile. Guard yours.",
+  "One more day added to your streak is one less day to your goal.",
+  "Spanish speakers are waiting to connect with you. Meet them halfway.",
+  "What you practice in private pays off in public.",
+  "Missing a day is fine. Making peace with missing days is not.",
+  "The person who shows up every day beats the genius who shows up sometimes.",
+  "Each review session is a deposit in your long-term memory bank.",
+  "Hard days are the ones that matter most. Show up anyway.",
+  "You already know more than you did a month ago. Keep stacking.",
+  "Think of your streak as a fire — it only takes one breath to keep it alive.",
+  "Learning a language is one of the highest-return investments you can make in yourself.",
+  "Not every session will feel good. All of them move you forward.",
+  "Progress is invisible until suddenly it isn't.",
+  "The words you know today felt impossible once. Remember that.",
+  "Every card you flip rewires a neural pathway. That's permanent.",
+  "Commit to the process and the results take care of themselves.",
+  "Hoy es un buen día para aprender algo nuevo. 🇪🇸",
+  "The goal isn't perfection. The goal is not stopping.",
+  "What separates those who learn a language from those who wish they had? This. Right now.",
+  "A river cuts through rock not because of its power but its persistence.",
+  "Your streak is proof you can do hard things. Don't break that proof.",
+];
+
+function pickQuote() {
+  const used = state.usedQuotes || [];
+  const pool = REMINDER_QUOTES.map((q, i) => i).filter(i => !used.includes(i));
+  const available = pool.length ? pool : REMINDER_QUOTES.map((_, i) => i);
+  const idx = available[Math.floor(Math.random() * available.length)];
+  const next = [...used, idx].slice(-15); // remember last 15 so no repeats for a while
+  state.usedQuotes = next;
+  saveState();
+  return REMINDER_QUOTES[idx];
+}
+
 function fireReminder() {
   const streak = calcStreak();
-  const body = streak > 0
-    ? `🔥 ${streak}-day streak! Keep it going — just a few cards today.`
-    : 'Time for your Spanish practice! 🇪🇸';
-  const opts = { body, icon: '/icon.svg', badge: '/icon.svg', tag: 'daily-reminder', renotify: true };
+  const quote = pickQuote();
+  const title = streak > 0
+    ? `🔥 ${streak}-day streak — don't break it!`
+    : '¡Hora de practicar! 🇪🇸';
+  const opts = { body: quote, icon: '/icon.svg', badge: '/icon.svg', tag: 'daily-reminder', renotify: true };
   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-    navigator.serviceWorker.ready.then(sw => sw.showNotification('Spanish Practice', opts));
+    navigator.serviceWorker.ready.then(sw => sw.showNotification(title, opts));
   } else {
-    new Notification('Spanish Practice', opts);
+    new Notification(title, opts);
   }
 }
 
