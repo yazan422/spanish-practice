@@ -580,6 +580,21 @@ body {
       <p style="font-size:0.72rem;color:var(--muted);margin-top:8px;">Latin American is the most universally understood accent. Uses Google neural voice.</p>
     </div>
 
+    <div class="block-label" style="margin-bottom:14px;">Reminders</div>
+    <div class="toggle-row" style="margin-bottom:10px;">
+      <div class="info"><div class="title">Daily reminder</div><div class="desc">Notify you to practice each day</div></div>
+      <label class="toggle">
+        <input type="checkbox" id="notifyToggle" onchange="toggleNotifications(this.checked)">
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+    </div>
+    <div id="notifyTimeRow" style="display:none;margin-bottom:22px;">
+      <div style="font-size:0.82rem;color:var(--muted);margin-bottom:6px;">Reminder time</div>
+      <input type="time" id="notifyTime" value="20:00" onchange="saveNotifyTime(this.value)"
+        style="background:var(--surface2);border:1px solid var(--border);color:var(--text);
+               border-radius:8px;padding:8px 12px;font-size:0.9rem;width:100%;box-sizing:border-box;">
+    </div>
+
     <div class="block-label" style="margin-bottom:12px;">Progress</div>
     <button class="danger-btn" onclick="confirmReset()">Reset all progress</button>
   </div>
@@ -1271,12 +1286,71 @@ function showSummary() {
 }
 
 // ═══════════════════════════════════════════
+// NOTIFICATIONS
+// ═══════════════════════════════════════════
+let notifyEnabled = false;
+let notifyTimeout = null;
+
+async function toggleNotifications(on) {
+  if (on) {
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') {
+      document.getElementById('notifyToggle').checked = false;
+      alert('Enable notifications in your browser/phone settings first, then try again.');
+      return;
+    }
+    notifyEnabled = true;
+    document.getElementById('notifyTimeRow').style.display = 'block';
+    scheduleReminder();
+  } else {
+    notifyEnabled = false;
+    if (notifyTimeout) { clearTimeout(notifyTimeout); notifyTimeout = null; }
+    document.getElementById('notifyTimeRow').style.display = 'none';
+  }
+}
+
+function saveNotifyTime(val) {
+  state.settings.notifyTime = val;
+  saveState();
+  if (notifyEnabled) scheduleReminder();
+}
+
+function scheduleReminder() {
+  if (notifyTimeout) { clearTimeout(notifyTimeout); notifyTimeout = null; }
+  if (!notifyEnabled || Notification.permission !== 'granted') return;
+  const [h, m] = (state.settings.notifyTime || '20:00').split(':').map(Number);
+  const now = new Date();
+  const target = new Date();
+  target.setHours(h, m, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  notifyTimeout = setTimeout(() => {
+    if (!state.activity[todayStr()]) fireReminder();
+    notifyTimeout = null;
+    scheduleReminder();
+  }, target - now);
+}
+
+function fireReminder() {
+  const streak = calcStreak();
+  const body = streak > 0
+    ? `🔥 ${streak}-day streak! Keep it going — just a few cards today.`
+    : 'Time for your Spanish practice! 🇪🇸';
+  const opts = { body, icon: '/icon.svg', badge: '/icon.svg', tag: 'daily-reminder', renotify: true };
+  if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(sw => sw.showNotification('Spanish Practice', opts));
+  } else {
+    new Notification('Spanish Practice', opts);
+  }
+}
+
+// ═══════════════════════════════════════════
 // SETTINGS
 // ═══════════════════════════════════════════
 function openSettings() { document.getElementById('settingsOverlay').classList.remove('hidden'); }
 function closeSettings() {
   document.getElementById('settingsOverlay').classList.add('hidden');
-  state.settings = { mode: currentMode, audioEnabled, ttsAccent };
+  state.settings = { mode: currentMode, audioEnabled, ttsAccent,
+    notifyEnabled, notifyTime: state.settings.notifyTime || '20:00' };
   saveState();
   updateDashboard();
 }
@@ -1335,6 +1409,15 @@ function escHtml(s) {
     document.querySelectorAll('#accentGrid .size-btn').forEach(b => {
       b.classList.toggle('active', b.dataset.accent === ttsAccent);
     });
+
+    // Restore notification setting
+    if (state.settings.notifyEnabled && Notification.permission === 'granted') {
+      notifyEnabled = true;
+      document.getElementById('notifyToggle').checked = true;
+      document.getElementById('notifyTimeRow').style.display = 'block';
+      document.getElementById('notifyTime').value = state.settings.notifyTime || '20:00';
+      scheduleReminder();
+    }
   }
   updateDashboard();
 })();
