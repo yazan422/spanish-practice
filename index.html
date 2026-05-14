@@ -907,7 +907,7 @@ function playPhrase(e) {
   e.stopPropagation();
   const text = e.currentTarget.dataset.phrase;
   stopAudio();
-  googleTTS(text);
+  googleTTS(text); // always user-triggered, safe on mobile
 }
 
 function phraseReveal(card) {
@@ -1088,9 +1088,15 @@ function markIdle() {
   if (b) b.classList.add('idle');
 }
 
-function playCardAudio(card) {
+function playCardAudio(card, fromUserGesture = false) {
   stopAudio();
   if (!audioEnabled) return;
+  // On mobile, only play when the user explicitly taps — never auto-play
+  if (isMobile() && !fromUserGesture) {
+    const btn = document.getElementById('audioBtn');
+    if (btn) { btn.classList.remove('idle'); btn.title = 'Tap to hear'; }
+    return;
+  }
   if (card.audioFilename && mediaFiles.has(card.audioFilename)) {
     currentAudio = new Audio(mediaFiles.get(card.audioFilename));
     currentAudio.onended = markIdle;
@@ -1107,8 +1113,6 @@ function isMobile() {
 }
 
 function googleTTS(text) {
-  // Mobile browsers block cross-origin audio requests — use Web Speech API instead
-  if (isMobile()) { browserTTS(text); return; }
   const url = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&ttsspeed=0.85&tl='
     + ttsAccent + '&q=' + encodeURIComponent(text);
   currentAudio = new Audio(url);
@@ -1144,7 +1148,7 @@ function replayAudio() {
   if (!card) return;
   const btn = document.getElementById('audioBtn');
   if (btn) btn.classList.remove('idle');
-  playCardAudio(card);
+  playCardAudio(card, true);
 }
 
 function stopAudio() {
