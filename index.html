@@ -1101,7 +1101,14 @@ function playCardAudio(card) {
   }
 }
 
+function isMobile() {
+  return /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) ||
+    window.matchMedia('(pointer: coarse)').matches;
+}
+
 function googleTTS(text) {
+  // Mobile browsers block cross-origin audio requests — use Web Speech API instead
+  if (isMobile()) { browserTTS(text); return; }
   const url = 'https://translate.google.com/translate_tts?ie=UTF-8&client=tw-ob&ttsspeed=0.85&tl='
     + ttsAccent + '&q=' + encodeURIComponent(text);
   currentAudio = new Audio(url);
@@ -1111,14 +1118,25 @@ function googleTTS(text) {
 }
 
 function browserTTS(text) {
-  if (!window.speechSynthesis) return;
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.lang = ttsAccent;
-  const voice = speechSynthesis.getVoices().find(v => v.lang.startsWith('es'));
-  if (voice) utt.voice = voice;
-  utt.rate = 0.9;
-  utt.onend = markIdle;
-  speechSynthesis.speak(utt);
+  if (!window.speechSynthesis) { markIdle(); return; }
+  // Voices load async on mobile — retry once if list is empty
+  const trySpeak = (attempt) => {
+    const voices = speechSynthesis.getVoices();
+    const voice = voices.find(v => v.lang === ttsAccent) ||
+                  voices.find(v => v.lang.startsWith('es'));
+    if (!voice && attempt < 3) {
+      setTimeout(() => trySpeak(attempt + 1), 200);
+      return;
+    }
+    const utt = new SpeechSynthesisUtterance(text);
+    utt.lang = ttsAccent;
+    if (voice) utt.voice = voice;
+    utt.rate = 0.9;
+    utt.onend = markIdle;
+    utt.onerror = markIdle;
+    speechSynthesis.speak(utt);
+  };
+  trySpeak(0);
 }
 
 function replayAudio() {
