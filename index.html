@@ -489,6 +489,49 @@ body {
   font-style: italic;
 }
 
+/* ── Gender badges ── */
+.gender-badge { font-size:0.72rem; font-weight:700; padding:2px 7px; border-radius:10px; margin-right:5px; display:inline-block; vertical-align:middle; }
+.gender-badge.masc { background:#1e3a5f; color:#60a5fa; }
+.gender-badge.fem  { background:#4a1942; color:#f472b6; }
+
+/* ── Fill-in-blank ── */
+.fill-blank { background:var(--surface2); border-bottom:2px solid var(--accent); padding:0 10px; border-radius:3px; letter-spacing:0.12em; font-weight:700; color:transparent; user-select:none; }
+.fill-blank-phrase { font-size:1.1rem; line-height:1.7; margin:10px 0; }
+.fill-blank-input { width:100%; box-sizing:border-box; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:10px 14px; font-size:1rem; color:var(--text); margin-top:14px; outline:none; }
+.fill-blank-input:focus { border-color:var(--accent); }
+
+/* ── Sentence-first ── */
+.sentence-first-phrase { font-size:1.15rem; line-height:1.7; margin:10px 0; }
+.sentence-first-phrase strong { color:var(--accent); text-decoration:underline; font-size:1.15em; }
+
+/* ── Secondary button ── */
+.secondary-btn { width:100%; padding:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface2); color:var(--muted); font-size:0.9rem; font-weight:600; cursor:pointer; margin-top:8px; transition:border-color 0.15s,color 0.15s; }
+.secondary-btn:hover { border-color:var(--accent); color:var(--text); }
+
+/* ── Session history ── */
+.history-row { display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border); font-size:0.85rem; }
+.history-row:last-child { border-bottom:none; }
+.history-date { color:var(--muted); flex:1; }
+.history-cards { font-weight:600; }
+.history-pct { font-weight:700; min-width:36px; text-align:right; }
+
+/* ── Milestone modal ── */
+.milestone-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.7); display:flex; align-items:center; justify-content:center; z-index:200; }
+.milestone-box { background:var(--surface); border:1px solid var(--accent); border-radius:20px; padding:36px 28px; text-align:center; max-width:320px; margin:20px; }
+.milestone-emoji { font-size:3rem; margin-bottom:14px; }
+.milestone-msg { font-size:1rem; font-weight:600; line-height:1.5; margin-bottom:20px; }
+
+/* ── Retention chart ── */
+#retentionChart { width:100%; height:60px; display:block; margin-top:12px; border-radius:4px; }
+
+/* ── Mobile sizing ── */
+@media (max-width:480px) {
+  .card-spanish { font-size:1.75rem; }
+  .card-english, .card-english-phrase { font-size:1.05rem; }
+  .card-phrase, .card-phrase-en, .fill-blank-phrase, .sentence-first-phrase { font-size:0.9rem; }
+  .stats-grid { grid-template-columns:repeat(3,1fr); }
+}
+
 </style>
 </head>
 <body>
@@ -519,6 +562,7 @@ body {
       <span style="font-size:0.8rem;color:var(--muted);">Retention: <strong id="retentionPct" style="color:var(--text);">—</strong></span>
     </div>
     <div class="heatmap-row" id="heatmap"></div>
+    <canvas id="retentionChart" height="60"></canvas>
   </div>
 
   <!-- Session launcher -->
@@ -531,6 +575,22 @@ body {
     </div>
     <div id="caughtUpMsg" class="all-caught-up hidden"></div>
     <button class="primary-btn" id="startBtn" onclick="startSession()">Start Session</button>
+    <button class="secondary-btn" id="weakBtn" onclick="startWeakSession()" style="display:none;">🎯 Practice Weak Words</button>
+  </div>
+
+  <!-- Session history -->
+  <div class="card-block" id="historyBlock" style="display:none;">
+    <div class="block-label" style="margin-bottom:10px;">Recent Sessions</div>
+    <div id="sessionHistory"></div>
+  </div>
+</div>
+
+<!-- ── Milestone modal ── -->
+<div class="milestone-overlay hidden" id="milestoneModal">
+  <div class="milestone-box">
+    <div class="milestone-emoji" id="milestoneEmoji">🏆</div>
+    <div class="milestone-msg" id="milestoneText"></div>
+    <button class="primary-btn" onclick="document.getElementById('milestoneModal').classList.add('hidden')">Keep going!</button>
   </div>
 </div>
 
@@ -541,7 +601,7 @@ body {
     <h2>Settings</h2>
 
     <div class="block-label">Practice Mode</div>
-    <div class="mode-grid" style="margin-bottom:22px;">
+    <div class="mode-grid" style="margin-bottom:22px;grid-template-columns:repeat(3,1fr);">
       <button class="mode-btn active" data-mode="audio-first" onclick="selectMode(this)">
         <div class="icon">🎧</div><div class="label">Audio First</div>
       </button>
@@ -550,6 +610,12 @@ body {
       </button>
       <button class="mode-btn" data-mode="multiple-choice" onclick="selectMode(this)">
         <div class="icon">🎯</div><div class="label">Multiple Choice</div>
+      </button>
+      <button class="mode-btn" data-mode="sentence-first" onclick="selectMode(this)">
+        <div class="icon">💬</div><div class="label">Sentence First</div>
+      </button>
+      <button class="mode-btn" data-mode="fill-blank" onclick="selectMode(this)">
+        <div class="icon">✏️</div><div class="label">Fill in Blank</div>
       </button>
     </div>
 
@@ -858,7 +924,35 @@ function updateDashboard() {
     startBtn.disabled = false;
   }
 
+  // Weak words button
+  const weakBtn = document.getElementById('weakBtn');
+  if (weakBtn) {
+    const hasWeak = allCards.some((_, i) => {
+      const cs = getCardState(i);
+      return cs.reviews > 0 && (cs.lapses >= 2 || (cs.ef && cs.ef < 1.8));
+    });
+    weakBtn.style.display = hasWeak ? '' : 'none';
+  }
+
+  // Session history
+  const hist = state.sessionHistory || [];
+  const hBlock = document.getElementById('historyBlock');
+  const hEl = document.getElementById('sessionHistory');
+  if (hBlock && hEl && hist.length) {
+    hBlock.style.display = '';
+    hEl.innerHTML = hist.slice(0, 5).map(s => {
+      const good = s.ratings.good + s.ratings.easy;
+      const pct = s.cards ? Math.round((good / s.cards) * 100) : 0;
+      return `<div class="history-row">
+        <span class="history-date">${s.date}</span>
+        <span class="history-cards">${s.cards} cards</span>
+        <span class="history-pct" style="color:${pct >= 70 ? 'var(--good)' : 'var(--muted)'}">${pct}%</span>
+      </div>`;
+    }).join('');
+  }
+
   buildHeatmap();
+  drawRetentionChart();
 }
 
 function buildHeatmap() {
@@ -893,18 +987,20 @@ function showCard() {
 
   document.getElementById('progressText').textContent = `${i + 1} / ${total}`;
   document.getElementById('progressFill').style.width = `${(i / total) * 100}%`;
-  document.getElementById('cardBadge').textContent = card.pos || '';
+  document.getElementById('cardBadge').innerHTML = card.pos ? posLabel(card) : '';
 
   // Show interval badge for review cards
   const isNew = session.isNew && session.isNew.has(cardIdx);
   const ibadge = document.getElementById('intervalBadge');
-  if (isNew) { ibadge.textContent = 'New'; ibadge.style.color = 'var(--good)'; }
+  if (isNew) { ibadge.textContent = `New · #${cardIdx + 1}`; ibadge.style.color = 'var(--good)'; }
   else if (cs.interval) { ibadge.textContent = `${cs.interval}d interval`; ibadge.style.color = 'var(--muted)'; }
   else { ibadge.textContent = ''; }
 
-  if (currentMode === 'audio-first')       renderAudioFirst(card);
-  else if (currentMode === 'flashcard')    renderFlashcard(card);
-  else                                     renderMultipleChoice(card, cardIdx);
+  if (currentMode === 'audio-first')        renderAudioFirst(card);
+  else if (currentMode === 'flashcard')     renderFlashcard(card);
+  else if (currentMode === 'sentence-first') renderSentenceFirst(card);
+  else if (currentMode === 'fill-blank')    renderFillBlank(card);
+  else                                      renderMultipleChoice(card, cardIdx);
 }
 
 function audioBtn() {
@@ -963,7 +1059,7 @@ function advanceAudioFirst() {
     cardPhase = 1;
     document.getElementById('cardContent').innerHTML = `
       ${audioBtn()}
-      ${card.pos ? `<div class="card-pos">${escHtml(card.pos)}</div>` : ''}
+      ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
       <div class="card-spanish">${escHtml(card.spanish)}</div>
       ${phraseBlock(card)}
       <button class="play-again-btn" onclick="replayAudio()">▶ Play again</button>`;
@@ -974,7 +1070,7 @@ function advanceAudioFirst() {
     cardPhase = 2;
     document.getElementById('cardContent').innerHTML = `
       ${audioBtn()}
-      ${card.pos ? `<div class="card-pos">${escHtml(card.pos)}</div>` : ''}
+      ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
       <div class="card-spanish">${escHtml(card.spanish)}</div>
       ${phraseBlock(card)}
       ${phraseReveal(card)}`;
@@ -982,11 +1078,101 @@ function advanceAudioFirst() {
   }
 }
 
+// ── POS / gender helper ──
+function posLabel(card) {
+  const p = card.pos || '';
+  if (p === 'nm') return '<span class="gender-badge masc">el</span>noun';
+  if (p === 'nf') return '<span class="gender-badge fem">la</span>noun';
+  if (p === 'v')   return 'verb';
+  if (p === 'adj') return 'adj';
+  return p;
+}
+
+// ── Sentence-first mode ──
+function highlightWordBold(phrase, word) {
+  if (!phrase || !word) return escHtml(phrase || '');
+  const esc = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const rx = new RegExp('(?<![a-zà-ÿ])(' + esc + ')(?![a-zà-ÿ])', 'gi');
+  return escHtml(phrase).replace(rx, '<strong>$1</strong>');
+}
+
+function renderSentenceFirst(card) {
+  const phraseHtml = card.phraseEs
+    ? `<div class="sentence-first-phrase">${highlightWordBold(card.phraseEs, card.spanish)}</div>`
+    : `<div class="card-spanish">${escHtml(card.spanish)}</div>`;
+  document.getElementById('cardContent').innerHTML = `
+    ${audioBtn()}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
+    ${phraseHtml}
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:10px;">What does the bold word mean?</p>`;
+  document.getElementById('actionArea').innerHTML = `
+    <button class="reveal-btn" onclick="revealSentenceFirst()">Reveal meaning</button>
+    <p class="reveal-hint">or tap the card</p>`;
+  playCardAudio(card);
+}
+
+function revealSentenceFirst() {
+  if (cardPhase !== 0) return;
+  cardPhase = 1;
+  const card = allCards[session.queue[session.index]];
+  const phraseHtml = card.phraseEs
+    ? `<div class="sentence-first-phrase">${highlightWordBold(card.phraseEs, card.spanish)}</div>`
+    : `<div class="card-spanish">${escHtml(card.spanish)}</div>`;
+  document.getElementById('cardContent').innerHTML = `
+    ${audioBtn()}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
+    ${phraseHtml}
+    ${phraseReveal(card)}`;
+  document.getElementById('actionArea').innerHTML = renderRatingButtons();
+}
+
+// ── Fill-in-blank mode ──
+function normalizeAnswer(s) {
+  return s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+function renderFillBlank(card) {
+  let promptHtml;
+  if (card.phraseEs) {
+    const esc = card.spanish.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const rx = new RegExp(esc, 'i');
+    promptHtml = `<div class="fill-blank-phrase">${escHtml(card.phraseEs).replace(rx, '<span class="fill-blank">_____</span>')}</div>`;
+  } else {
+    promptHtml = `<div class="fill-blank-phrase">Write the Spanish for: <strong>${escHtml(card.english)}</strong></div>`;
+  }
+  document.getElementById('cardContent').innerHTML = `
+    ${audioBtn()}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
+    ${promptHtml}
+    <input class="fill-blank-input" id="fillInput" type="text" placeholder="Type the missing word…"
+      autocomplete="off" autocorrect="off" spellcheck="false"
+      onkeydown="if(event.key==='Enter')checkFillBlank()">
+    <button class="reveal-btn" style="margin-top:10px;width:100%;" onclick="checkFillBlank()">Check ↵</button>`;
+  document.getElementById('actionArea').innerHTML = '';
+  cardPhase = 0;
+  playCardAudio(card);
+  setTimeout(() => { const el = document.getElementById('fillInput'); if (el) el.focus(); }, 120);
+}
+
+function checkFillBlank() {
+  if (cardPhase !== 0) return;
+  cardPhase = 1;
+  const card = allCards[session.queue[session.index]];
+  const inp = document.getElementById('fillInput');
+  const answer = inp ? inp.value : '';
+  const correct = normalizeAnswer(answer) === normalizeAnswer(card.spanish);
+  const feedback = correct
+    ? `<div style="color:var(--good);font-size:1rem;font-weight:700;margin:12px 0;">✓ Correct!</div>`
+    : `<div style="color:var(--again);font-size:0.95rem;font-weight:600;margin:12px 0;">✗ Answer: <strong>${escHtml(card.spanish)}</strong></div>`;
+  document.getElementById('cardContent').innerHTML += feedback + phraseReveal(card);
+  document.getElementById('actionArea').innerHTML = renderRatingButtons();
+}
+
 // Flashcard
 function renderFlashcard(card) {
   document.getElementById('cardContent').innerHTML = `
     ${audioBtn()}
-    ${card.pos ? `<div class="card-pos">${escHtml(card.pos)}</div>` : ''}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
     <div class="card-spanish">${escHtml(card.spanish)}</div>
     ${phraseBlock(card)}
     <button class="play-again-btn" onclick="replayAudio()">▶ Play audio</button>`;
@@ -1002,7 +1188,7 @@ function revealFlashcard() {
   const card = allCards[session.queue[session.index]];
   document.getElementById('cardContent').innerHTML = `
     ${audioBtn()}
-    ${card.pos ? `<div class="card-pos">${escHtml(card.pos)}</div>` : ''}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
     <div class="card-spanish">${escHtml(card.spanish)}</div>
     ${phraseBlock(card)}
     ${phraseReveal(card)}`;
@@ -1021,7 +1207,7 @@ function renderMultipleChoice(card, cardIdx) {
 
   document.getElementById('cardContent').innerHTML = `
     ${audioBtn()}
-    ${card.pos ? `<div class="card-pos">${escHtml(card.pos)}</div>` : ''}
+    ${card.pos ? `<div class="card-pos">${posLabel(card)}</div>` : ''}
     <div class="card-spanish">${escHtml(card.spanish)}</div>
     ${phraseBlock(card)}
     <div class="choices" style="margin-top:14px;">
@@ -1104,6 +1290,8 @@ function handleCardTap(e) {
   if (e.target.closest('button') || e.target.closest('input')) return;
   if (currentMode === 'audio-first') advanceAudioFirst();
   else if (currentMode === 'flashcard') revealFlashcard();
+  else if (currentMode === 'sentence-first') revealSentenceFirst();
+  else if (currentMode === 'fill-blank') checkFillBlank();
 }
 
 document.addEventListener('keydown', e => {
@@ -1112,6 +1300,8 @@ document.addEventListener('keydown', e => {
     e.preventDefault();
     if (currentMode === 'audio-first') advanceAudioFirst();
     else if (currentMode === 'flashcard') revealFlashcard();
+    else if (currentMode === 'sentence-first') revealSentenceFirst();
+    else if (currentMode === 'fill-blank') checkFillBlank();
   }
   if (['1','2','3','4'].includes(e.key)) {
     if (currentMode === 'multiple-choice' && cardPhase === 0) {
@@ -1140,21 +1330,29 @@ function renderRatingButtons() {
 
 function rate(rating) {
   const cardIdx = session.queue[session.index];
-  const wasNew = session.isNew && session.isNew.has(cardIdx);
+  const prevReps = (state.cards[cardIdx] || {}).reps || 0;
 
   // Apply SM-2
   applyRating(cardIdx, rating);
   session.ratings[rating]++;
 
-
   // Activity log (for heatmap + streak)
   const today = todayStr();
   state.activity[today] = (state.activity[today] || 0) + 1;
+
+  // Daily retention stats (for chart)
+  if (!state.dailyStats) state.dailyStats = {};
+  if (!state.dailyStats[today]) state.dailyStats[today] = { reviews: 0, correct: 0 };
+  state.dailyStats[today].reviews++;
+  if (rating === 'good' || rating === 'easy') state.dailyStats[today].correct++;
 
   // Retention log
   if (!state.ratingLog) state.ratingLog = [];
   state.ratingLog.push(rating);
   if (state.ratingLog.length > 500) state.ratingLog = state.ratingLog.slice(-500);
+
+  // Milestone check
+  checkMilestone(cardIdx, prevReps, rating);
 
   saveState();
 
@@ -1297,7 +1495,88 @@ function showSummary() {
   if (newCards.length) lines.push(`<strong>${newCards.length}</strong> new card${newCards.length > 1 ? 's' : ''} available tomorrow`);
   nextInfo.innerHTML = lines.join('<br>');
 
+  // Save session history
+  const hist = state.sessionHistory || (state.sessionHistory = []);
+  hist.unshift({ date: todayStr(), cards: session.queue.length, ratings: { ...session.ratings } });
+  state.sessionHistory = hist.slice(0, 10);
+  saveState();
+
   showScreen('summaryScreen');
+}
+
+// ═══════════════════════════════════════════
+// WEAK WORDS SESSION
+// ═══════════════════════════════════════════
+function startWeakSession() {
+  unlockAudio();
+  const weak = allCards.map((_, i) => i).filter(i => {
+    const cs = getCardState(i);
+    return cs.reviews > 0 && (cs.lapses >= 2 || (cs.ef && cs.ef < 1.8));
+  });
+  if (!weak.length) { alert('No weak words yet — keep practicing and they will show up here!'); return; }
+  const queue = shuffle(weak).slice(0, 20);
+  session = { queue, index: 0, ratings: { again:0, hard:0, good:0, easy:0 }, newCount: 0, reviewCount: queue.length, isNew: new Set() };
+  showScreen('practiceScreen');
+  showCard();
+}
+
+// ═══════════════════════════════════════════
+// MILESTONES
+// ═══════════════════════════════════════════
+const MILESTONES = {
+  10: ['🌱', "10 words down — you've officially started!"],
+  25: ['🧱', "25 words! The foundation is forming."],
+  50: ['📚', "50 words! That's a real vocabulary now."],
+  100: ['🏆', "100 words! You're in the top tier of learners."],
+  250: ['💬', "250 words — basic conversations are within reach."],
+  500: ['✈️', "500 words! You could survive anywhere in Latin America."],
+  1000: ['🔓', "1,000 words! Intermediate level unlocked."],
+  2500: ['🚀', "2,500 words — you're approaching fluency!"],
+  5001: ['🎓', "5,001 words — you've mastered the entire deck!"],
+};
+
+function checkMilestone(cardIdx, prevReps, rating) {
+  if (prevReps === 0 && (rating === 'good' || rating === 'easy')) {
+    state.totalLearned = (state.totalLearned || 0) + 1;
+    const ms = MILESTONES[state.totalLearned];
+    if (ms) {
+      document.getElementById('milestoneEmoji').textContent = ms[0];
+      document.getElementById('milestoneText').textContent = ms[1];
+      document.getElementById('milestoneModal').classList.remove('hidden');
+    }
+  }
+}
+
+// ═══════════════════════════════════════════
+// RETENTION CHART
+// ═══════════════════════════════════════════
+function drawRetentionChart() {
+  const canvas = document.getElementById('retentionChart');
+  if (!canvas) return;
+  const W = canvas.parentElement.clientWidth || 300;
+  canvas.width = W; canvas.height = 60;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, 60);
+  const ds = state.dailyStats || {};
+  const days = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(); d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const barW = Math.floor(W / 30) - 1;
+  days.forEach((day, i) => {
+    const d = ds[day];
+    if (!d || !d.reviews) return;
+    const pct = d.correct / d.reviews;
+    const h = Math.max(4, Math.round(pct * 52));
+    const r = Math.round((1 - pct) * 200);
+    const g = Math.round(pct * 180);
+    ctx.fillStyle = `rgb(${r},${g},60)`;
+    ctx.beginPath();
+    if (ctx.roundRect) ctx.roundRect(i * (barW + 1), 60 - h, barW, h, 2);
+    else ctx.rect(i * (barW + 1), 60 - h, barW, h);
+    ctx.fill();
+  });
 }
 
 // ═══════════════════════════════════════════
