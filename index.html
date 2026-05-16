@@ -793,6 +793,51 @@ function applyRating(idx, rating) {
 }
 
 // ═══════════════════════════════════════════
+// BEGINNER PRIORITY SCORING
+// ═══════════════════════════════════════════
+function computePriority(card, index) {
+  // 1. Frequency score — top 1000 words dominate (score 1–1000)
+  let score = Math.max(0, 1000 - Math.min(index, 999));
+
+  // 2. Cognate bonus — similar to English, nearly free to learn
+  const es = (card.spanish || '').toLowerCase();
+  const en = (card.english || '').toLowerCase().split(/[,;(]/)[0].trim();
+  const cognateEndings = /(?:ción|sión|dad|mente|ista|ismo|al|ble|ivo|ivo|ico)$/;
+  let isCognate = cognateEndings.test(es);
+  // Also check if the words are very similar (e.g. "hotel"/"hotel", "color"/"color")
+  if (!isCognate && es.length >= 4 && en.length >= 4) {
+    // Simple similarity: shared prefix of ≥4 chars
+    let shared = 0;
+    for (let i = 0; i < Math.min(es.length, en.length); i++) {
+      if (es[i] === en[i]) shared++; else break;
+    }
+    if (shared >= 4) isCognate = true;
+  }
+  if (isCognate) score += 200;
+
+  // 3. POS bonus — verbs and nouns are more immediately useful
+  const pos = card.pos || '';
+  if (pos === 'v')             score += 50;
+  else if (pos === 'nm' || pos === 'nf') score += 30;
+  else if (pos === 'adj')      score += 20;
+
+  return score;
+}
+
+// Build priority-sorted order for new cards (computed once at startup)
+const sortedNewOrder = allCards
+  .map((card, i) => ({ i, score: computePriority(card, i) }))
+  .sort((a, b) => b.score - a.score)
+  .map(x => x.i);
+
+function cardTier(priorityRank) {
+  if (priorityRank < 300)  return '🌟 Essential';
+  if (priorityRank < 1000) return '📗 Core';
+  if (priorityRank < 2500) return '📘 Useful';
+  return '📕 Advanced';
+}
+
+// ═══════════════════════════════════════════
 // SESSION QUEUE
 // ═══════════════════════════════════════════
 let currentMode   = state.settings.mode || 'audio-first';
@@ -803,6 +848,9 @@ const mediaFiles  = new Map();
 let session = { queue: [], index: 0, ratings: { again: 0, hard: 0, good: 0, easy: 0 }, newCount: 0, reviewCount: 0 };
 let cardPhase = 0;
 let currentAudio = null;
+
+// Map from card index → priority rank (position in sortedNewOrder)
+const priorityRank = new Map(sortedNewOrder.map((cardIdx, rank) => [cardIdx, rank]));
 
 function buildQueue() {
   const today = todayStr();
@@ -817,7 +865,8 @@ function buildQueue() {
   });
   // Sort due: oldest due date first
   due.sort((a, b) => state.cards[a].dueDate.localeCompare(state.cards[b].dueDate));
-  // New cards: how many can we add today
+  // New cards: sorted by beginner priority (highest score first)
+  fresh.sort((a, b) => (priorityRank.get(a) ?? 9999) - (priorityRank.get(b) ?? 9999));
   return { due, newCards: fresh };
 }
 
@@ -992,7 +1041,7 @@ function showCard() {
   // Show interval badge for review cards
   const isNew = session.isNew && session.isNew.has(cardIdx);
   const ibadge = document.getElementById('intervalBadge');
-  if (isNew) { ibadge.textContent = `New · #${cardIdx + 1}`; ibadge.style.color = 'var(--good)'; }
+  if (isNew) { ibadge.textContent = cardTier(priorityRank.get(cardIdx) ?? cardIdx); ibadge.style.color = 'var(--good)'; }
   else if (cs.interval) { ibadge.textContent = `${cs.interval}d interval`; ibadge.style.color = 'var(--muted)'; }
   else { ibadge.textContent = ''; }
 
